@@ -141,7 +141,11 @@ def _source_buttons(data):
 def _say(text, state=None, end_session=False):
     result = {
         "version": "1.0",
-        "response": {"text": text[:1024], "end_session": end_session},
+        "response": {
+            "text": text[:1024],
+            "tts": '<speaker effect="pitch_down">' + text[:900],
+            "end_session": end_session,
+        },
     }
     if state is not None and not end_session:
         result["session_state"] = state
