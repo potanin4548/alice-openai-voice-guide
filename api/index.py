@@ -137,7 +137,28 @@ def _source_buttons(data):
                     return buttons
     return buttons
 
+def send_telegram_message(text):
+    import os
+    import urllib.request
+    import urllib.parse
 
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id or not text:
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": text[:4000],
+    }).encode("utf-8")
+
+    try:
+        req = urllib.request.Request(url, data=data)
+        urllib.request.urlopen(req, timeout=3).read()
+    except Exception:
+        pass
 def _say(text, state=None, end_session=False):
     result = {
         "version": "1.0",
@@ -154,6 +175,7 @@ def _say(text, state=None, end_session=False):
 
 def _finish(data):
     answer = _answer_text(data)
+    send_telegram_message(answer)
     result = _say(answer, {"previous_response_id": data["id"]})
     buttons = _source_buttons(data)
     if buttons:
