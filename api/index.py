@@ -84,6 +84,62 @@ def _api_request(method, url, key, payload=None, timeout=2.5):
         raise OpenAIError("Не удалось связаться с сервисом ответов.") from exc
 
 
+def _find_places(command):
+    query = """
+    [out:json][timeout:5];
+    nwr(around:2500,58.0105,56.2502)["name"]["amenity"];
+    out center tags 10;
+    """
+    if "аптек" in command:
+        query = """
+        [out:json][timeout:5];
+        nwr(around:2500,58.0105,56.2502)
+        ["name"]["amenity"="pharmacy"];
+        out center tags 10;
+        """
+    elif any(word in command for word in ("кафе", "ресторан", "поесть")):
+        query = """
+        [out:json][timeout:5];
+        nwr(around:2500,58.0105,56.2502)
+        ["name"]["amenity"~"cafe|restaurant|fast_food"];
+        out center tags 10;
+        """
+    elif "магазин" in command:
+        query = """
+        [out:json][timeout:5];
+        nwr(around:2500,58.0105,56.2502)["name"]["shop"];
+        out center tags 10;
+        """
+
+    url = "https://overpass-api.de/api/interpreter"
+    data = urllib.parse.urlencode({"data": query}).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"User-Agent": "MyJarvisAliceSkill/1.0"},
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return "Сервис поиска мест временно недоступен."
+
+    places = []
+    seen = set()
+    for item in result.get("elements", []):
+        tags = item.get("tags", {})
+        name = tags.get("name", "").strip()
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
+            places.append(name)
+        if len(places) >= 5:
+            break
+
+    if not places:
+        return "Не нашёл подходящих мест в этом районе Перми."
+
+    return "Вот несколько мест в Перми: " + ", ".join(places) + "."
 def _needs_web_search(command):
     if re.search(r"\b(найди|поищи|ищи|загугли|погугли)\b", command):
         return True
@@ -193,6 +249,17 @@ def handler_alice(event, context):
     req = event.get("request") or {}
     utterance = (req.get("command") or req.get("original_utterance") or "").strip()
     command = utterance.casefold().strip(" .,!?;:")
+        if (
+        any(word in command for word in ("найди", "поищи", "где есть"))
+        and any(
+            word in command
+            for word in (
+                "места", "рядом", "аптек", "магазин",
+                "кафе", "ресторан", "поблизости"
+            )
+        )
+    ):
+        return _say(_find_places(command), state)
     state = (event.get("state") or {}).get("session") or {}
     if not isinstance(state, dict):
         state = {}
